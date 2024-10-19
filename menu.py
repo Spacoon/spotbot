@@ -1,9 +1,11 @@
 import json
 
 from openai import OpenAI
+
 import streamlit as st
 
-from spotify_controller import SpotifyController
+
+from spotify_controller import SpotifyController, OpenAiTools
 
 
 def read_secrets():
@@ -13,25 +15,75 @@ def read_secrets():
 
 class Menu:
     def __init__(self):
-        # read secrets.json
         self.secrets = read_secrets()
 
-        spotify_scopes = ("user-library-read,user-read-recently-played,user-read-playback-state,"
-                          "user-modify-playback-state,playlist-modify-public,playlist-modify-private")
-        self.sp = SpotifyController(credentials=self.secrets, scopes=spotify_scopes)
+        self.sp = SpotifyController(credentials=self.secrets, scopes="user-library-read,"
+                                                                     "user-read-recently-played,"
+                                                                     "user-read-playback-state,"
+                                                                     "user-modify-playback-state,"
+                                                                     "playlist-modify-public,"
+                                                                     "playlist-modify-private,"
+                                                                     "user-top-read")
+
+        if not self.sp.is_device_active():
+            st.error("You don't have any active devices. Please open Spotify on your device and refresh the page.")
+            st.stop()
+
+        self.function_map = {
+            'play_track': {
+                'func': self.sp.play_track,
+                'message': lambda message: f'Playing {message}'
+            },
+            'pause_playback': {
+                'func': self.sp.pause_playback,
+                'message': lambda message: 'Stopped playback'
+            },
+            'resume_playback': {
+                'func': self.sp.resume_playback,
+                'message': lambda message: 'Resumed playback'
+            },
+            'add_to_queue': {
+                'func': self.sp.add_to_queue,
+                'message': lambda message: f'Added {message} to a queue'
+            },
+            'switch_to_next_track': {
+                'func': self.sp.switch_to_next_track,
+                'message': lambda message: f'Skipping {message}'
+            },
+            'switch_to_previous_track': {
+                'func': self.sp.switch_to_previous_track,
+                'message': lambda message: f'Switching to previous track...'
+            },
+            'get_my_current_playback': {
+                'func': self.sp.get_my_current_playback,
+                'message': lambda message: f'Currently playing: {message}'
+            },
+            'create_playlist_with_tracks': {
+                'func': self.sp.create_playlist_with_tracks,
+                'message': lambda message: f'Here\'s your playlist: {message}'
+            },
+            'get_my_top_tracks': {
+                'func': self.sp.get_my_top_tracks,
+                'message': lambda message: f'Here are your top tracks of all time:\n\n{message}'
+            },
+            'get_my_top_artists': {
+                'func': self.sp.get_my_top_artists,
+                'message': lambda message: f'Here are your top artists of all time:\n\n{message}'
+            },
+        }
+
         self.draw_page()
 
     def draw_page(self):
+        st.set_page_config(page_title="Spotify Chatbot", page_icon="🎵", layout="wide")
+
         openai_key = self.secrets['openai']['key']
         with st.sidebar:
-            openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password", value=openai_key)
-
-            if openai_api_key is not None:
-                if st.button('clear chat'):
-                    st.session_state.clear()
+            self.handle_sidebar()
 
         st.title("Spotify api chatbot")
-        st.caption("A gpt-4o-mini chatbot that interacts with your Spotify account.")
+        st.caption("A gpt-4o-mini chatbot that interacts with your Spotify account.\n"
+                   "(please note that it's not affiliated in any way with Spotify company)")
         if "messages" not in st.session_state:
             st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
 
@@ -39,159 +91,35 @@ class Menu:
             st.chat_message(msg["role"]).write(msg["content"])
 
         if prompt := st.chat_input():
-            if not openai_api_key:
+            if not openai_key:
                 st.info("Please add your OpenAI API key to continue.")
                 st.stop()
 
-            client = OpenAI(api_key=openai_api_key)
+            client = OpenAI(api_key=openai_key)
             st.session_state.messages.append({
                 "role": "user",
                 "content": prompt
             })
             st.chat_message("user").write(prompt)
 
-            tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "play_track",
-                        "description": "Play a song. Call this whenever you are asked to play something, "
-                                       "for example when user says 'play a song'",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "track_name": {
-                                    "type": "string",
-                                    "description": "Title of a track to play"
-                                },
-                            },
-                            "required": ["track_name"],
-                            "additionalProperties": False,
-                        },
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "pause_playback",
-                        "description": "Pause playback of a track. Call this whenever you are asked to stop or pause "
-                                       "playing something,"
-                                       "for example when user says 'pause'"
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "resume_playback",
-                        "description": "Resume playback of a track. Call this whenever you are asked to resume or "
-                                       "start playing something (but if user asks you to play a certain song, "
-                                       "you should not call this function), for example when user says 'play'",
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "add_to_queue",
-                        "description": "Add tracks to a playing queue. For example, when user says 'add to queue "
-                                       "track1 and track2', you should call this function with parameter ['track1', "
-                                       "'track2']",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "tracks": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    },
-                                    "description": "Titles of tracks, each and every one put in a list"
-                                },
-                            },
-                            "required": ["tracks"],
-                            "additionalProperties": False,
-                        },
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "switch_to_next_track",
-                        "description": "Switch current playback to a next track. For example, when users says 'play "
-                                       "next track', you should call this function",
-
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "switch_to_previous_track",
-                        "description": "Switch current playback to a previous track. For example, when users says 'play"
-                                       " previous track', you should call this function",
-
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_my_current_playback",
-                        "description": "Get the current playback. For example, when users says 'what is playing', "
-                                       "you should call this function",
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "create_playlist_with_tracks",
-                        "description": "Create a playlist with tracks. Call this function when you want to create a "
-                                       "playlist that contains the tracks based on user\'s description",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "tracks": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    },
-                                    "description": "Titles of tracks based on user\'s response."
-                                },
-                                "name": {
-                                    "type": "string",
-                                    "description": "Name of the playlist. If not provided, come up with a name yourself"
-                                }
-                            },
-                            "required": ["tracks", "name"],
-                            "additionalProperties": False,
-                        },
-                    }
-                },
-            ]
-
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=st.session_state.messages,
-                tools=tools
+                tools=OpenAiTools.tools
             )
             msg = response.choices[0].message.content
 
             tool_call = response.choices[0].message.tool_calls
             if tool_call is not None:
-
                 called_function = tool_call[0].function.name
 
-                functions = {
-                    'play_track': self.sp.play_track,
-                    'pause_playback': self.sp.pause_playback,
-                    'resume_playback': self.sp.resume_playback,
-                    'add_to_queue': self.sp.add_to_queue,
-                    'switch_to_next_track': self.sp.switch_to_next_track,
-                    'switch_to_previous_track': self.sp.switch_to_previous_track,
-                    'get_my_current_playback': self.sp.get_my_current_playback,
-                    'create_playlist_with_tracks': self.sp.create_playlist_with_tracks
-                }
-
-                if called_function in functions:
+                if called_function in self.function_map:
                     arguments = json.loads(tool_call[0].function.arguments)
-                    msg = functions[called_function](**arguments)
+                    func = self.function_map[called_function]['func']
+                    message_func = self.function_map[called_function]['message']
 
+                    result = func(**arguments)
+                    msg = message_func(result)
 
             msg = ' ' if msg is None else msg  # in case msg is None it won't crash streamlit
 
@@ -201,3 +129,9 @@ class Menu:
             })
 
             st.chat_message("assistant").write(msg)
+
+    def handle_sidebar(self):
+        st.sidebar.title("Menu")
+        if st.button('clear chat'):
+            st.session_state.clear()
+        st.sidebar.write(self.function_map.keys())
