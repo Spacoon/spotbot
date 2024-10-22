@@ -29,6 +29,9 @@ class Menu:
             st.error("You don't have any active devices. Please open Spotify on your device and refresh the page.")
             st.stop()
 
+
+        self.username = self.sp.get_user_profile_name()
+
         self.function_map = {
             'play_track': {
                 'func': self.sp.play_track,
@@ -82,8 +85,11 @@ class Menu:
             self.handle_sidebar()
 
         st.title("Spotify api chatbot")
-        st.caption("A gpt-4o-mini chatbot that interacts with your Spotify account.\n"
-                   "(please note that it's not affiliated in any way with Spotify company)")
+        st.caption("A gpt-4o-mini chatbot that interacts with your Spotify account\n\n"
+                   "(please note that it's not affiliated in any way with Spotify company).")
+
+
+
         if "messages" not in st.session_state:
             st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
 
@@ -131,6 +137,8 @@ class Menu:
             st.chat_message("assistant").write(msg)
 
     def handle_sidebar(self):
+        st.image(self.username[2], use_column_width=True)
+        st.write(f"Logged in as: [{self.username[0]}]({self.username[1]})")
         st.sidebar.title("Menu")
         if st.button('clear chat'):
             st.session_state.clear()

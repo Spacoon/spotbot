@@ -14,11 +14,17 @@ class SpotifyController:
         except Exception as e:
             print(f"Error initializing SpotifyController: {e}")
 
+
+
     def _get_current_playback(self):
         return self.sp.current_playback()
 
     def _create_playlist(self, name: str):
         return self.sp.user_playlist_create(self.sp.me()['id'], name)
+
+    def get_user_profile_name(self):
+        user = self.sp.me()
+        return user['display_name'], user['external_urls']['spotify'], user['images'][0]['url']
 
     def _fetch_top_tracks(self, tracks=50):
         iterations = tracks // 50
