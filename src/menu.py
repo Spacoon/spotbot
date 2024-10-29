@@ -1,21 +1,20 @@
 import json
 
+
 from openai import OpenAI
-
 import streamlit as st
-
 
 from spotify_controller import SpotifyController, OpenAiTools
 
 
-def read_secrets():
-    with open('../secrets.json', 'r') as file:
+def _read_secrets():
+    with open('secrets.json', 'r') as file:
         return json.load(file)
 
 
 class Menu:
     def __init__(self):
-        self.secrets = read_secrets()
+        self.secrets = _read_secrets()
 
         self.sp = SpotifyController(credentials=self.secrets, scopes="user-library-read,"
                                                                      "user-read-recently-played,"
@@ -75,21 +74,45 @@ class Menu:
             },
         }
 
-        self.draw_page()
+        self._draw_page()
 
-    def draw_page(self):
+    def _draw_page(self):
         st.set_page_config(page_title="Spotify Chatbot", page_icon="🎵", layout="wide")
 
         openai_key = self.secrets['openai']['key']
         with st.sidebar:
-            self.handle_sidebar()
+            self._handle_sidebar()
 
         st.title("Spotify api chatbot")
         st.caption("A gpt-4o-mini chatbot that interacts with your Spotify account\n\n"
                    "(please note that it's not affiliated in any way with Spotify company).")
 
+        self._handle_chat(openai_key)
+
+    def _handle_sidebar(self):
+        st.image(self.username[2], use_column_width=True)
+        st.write(f"Logged in as: [{self.username[0]}]({self.username[1]})")
+
+        st.sidebar.title("Menu")
+        if st.button('clear chat'):
+            st.session_state.clear()
+        st.sidebar.write(self.function_map.keys())
+
+    def _handle_tool_call(self, tool_call):
+        called_function = tool_call[0].function.name
+
+        if called_function in self.function_map:
+            arguments = json.loads(tool_call[0].function.arguments)
+            func = self.function_map[called_function]['func']
+            message_func = self.function_map[called_function]['message']
+
+            result = func(**arguments)
+            msg = message_func(result)
+
+        return msg
 
 
+    def _handle_chat(self, openai_key):
         if "messages" not in st.session_state:
             st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
 
@@ -111,21 +134,16 @@ class Menu:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=st.session_state.messages,
-                tools=OpenAiTools.tools
+                tools=OpenAiTools.tools,
+                tool_choice="auto"
             )
+
+
             msg = response.choices[0].message.content
 
             tool_call = response.choices[0].message.tool_calls
             if tool_call is not None:
-                called_function = tool_call[0].function.name
-
-                if called_function in self.function_map:
-                    arguments = json.loads(tool_call[0].function.arguments)
-                    func = self.function_map[called_function]['func']
-                    message_func = self.function_map[called_function]['message']
-
-                    result = func(**arguments)
-                    msg = message_func(result)
+                msg = self._handle_tool_call(tool_call)
 
             msg = ' ' if msg is None else msg  # in case msg is None it won't crash streamlit
 
@@ -136,10 +154,4 @@ class Menu:
 
             st.chat_message("assistant").write(msg)
 
-    def handle_sidebar(self):
-        st.image(self.username[2], use_column_width=True)
-        st.write(f"Logged in as: [{self.username[0]}]({self.username[1]})")
-        st.sidebar.title("Menu")
-        if st.button('clear chat'):
-            st.session_state.clear()
-        st.sidebar.write(self.function_map.keys())
+
