@@ -20,3 +20,5 @@ Run as a shell script
 streamlit run src/main.py
 # or streamlit run <your/path/to/main.py>
 ```
+
+![alt text](https://github.com/Spacoon/spotbot/blob/main/showcase.jpg)
