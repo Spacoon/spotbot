@@ -12,7 +12,7 @@ class SpotifyController:
                                                                 redirect_uri=credentials['spotify'][
                                                                     'redirect_uri']))
         except Exception as e:
-            print(f"Error initializing SpotifyController: {e}")
+            print(f"Error initializing SpotifyController: \n{e}")
 
 
 
@@ -73,11 +73,12 @@ class SpotifyController:
         if track_name:
             track = self._search_track(track_name)
 
+            # sp.start_playback plays the given track, but unfortunately erases a queue, so it's better to use
+            # add_to_queue and next_track
+
             self.sp.add_to_queue(track)
             self.sp.next_track()
 
-            # sp.start_playback plays the given track, but unfortunately erases a queue, so it's better to use
-            # add_to_queue and next_track
             # self.sp.start_playback(uris=[track])
         else:
             return None
@@ -116,7 +117,7 @@ class SpotifyController:
         self.sp.previous_track()
         return Response('Switching to previous track...')
 
-    def get_my_current_playback(self):
+    def get_user_current_playback(self):
         current_playback = self._get_current_playback()
 
         if current_playback is not None:
@@ -134,7 +135,7 @@ class SpotifyController:
 
         return Response(playlist['external_urls']['spotify'])
 
-    def get_my_top_tracks(self, tracks=50):
+    def get_user_top_tracks(self, tracks=50):
         top_tracks = self._fetch_top_tracks(tracks)
         top_tracks_names = [track['name'] for track in top_tracks]
         top_tracks_artists = [track['artists'][0]['name'] for track in top_tracks]
@@ -144,7 +145,7 @@ class SpotifyController:
 
         return Response(listed_tracks=top_tracks_names)
 
-    def get_my_top_artists(self, tracks=50):
+    def get_user_top_artists(self, tracks=50):
         top_artists = self._fetch_top_artists(tracks)
         top_artists_names = [artist['name'] for artist in top_artists]
 
@@ -168,154 +169,3 @@ class Response:
             return self.listed_tracks
         else:
             return ''
-
-
-class OpenAiTools:
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "play_track",
-                "description": "Play a song. Call this whenever you are asked to play something, "
-                               "for example when user says 'play a song'",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "track_name": {
-                            "type": "string",
-                            "description": "Title of a track to play"
-                        },
-                    },
-                    "required": ["track_name"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "pause_playback",
-                "description": "Pause playback of a track. Call this whenever you are asked to stop or pause "
-                               "playing something, for example when user says 'pause'"
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "resume_playback",
-                "description": "Resume playback of a track. Call this whenever you are asked to resume or "
-                               "start playing something (but if user asks you to play a certain song, "
-                               "you should not call this function), for example when user says 'play'",
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "switch_to_next_track",
-                "description": "Switch current playback to a next track. For example, when users says 'play next "
-                               "track', you should call this function.",
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "switch_to_previous_track",
-                "description": "Switch current playback to a previous track. For example, when users says 'play"
-                               " previous track', you should call this function",
-
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "add_to_queue",
-                "description": "Add tracks to a playing queue. For example, when user says 'add to queue track1 and "
-                               "track2', you should call this function with parameter ['track1', 'track2']",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tracks": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "Titles of tracks, each and every one put in a list"
-                        },
-                    },
-                    "required": ["tracks"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_my_current_playback",
-                "description": "Get the current playback. For example, when users says 'what is playing', "
-                               "you should call this function",
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "create_playlist_with_tracks",
-                "description": "Create a playlist with tracks. Call this function when you want to create a "
-                               "playlist that contains the tracks based on user\'s description.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tracks": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "Titles of tracks based on user\'s response."
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Name of the playlist. If not provided, come up with a name yourself"
-                        }
-                    },
-                    "required": ["tracks", "name"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_my_top_tracks",
-                "description": "Get user\'s favorite tracks. Call this function when you want to get user\'s top tracks",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tracks": {
-                            "type": "integer",
-                            "description": "Number of top tracks to get"
-                        }
-                    },
-                    "required": ["tracks"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_my_top_artists",
-                "description": "Get user\'s favorite artists. Call this function when you want to get user\'s top "
-                               "artists, performers, or bands",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tracks": {
-                            "type": "integer",
-                            "description": "Number of top artists to get"
-                        }
-                    },
-                    "required": ["tracks"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-    ]
