@@ -1,6 +1,6 @@
 # Spotbot
 
-A streamlit application that integrates gpt-4o-mini model to allow user control their Spotify account (features such as controlling playback, adding tracks to queue, creating playlist based on description) through a natural language assistant.
+A web application that integrates OpenAi’s GPT-4o-mini model with Spotify API to enable AI-powered music control and playlist curation. The application allows users to control their Spotify playback and manage their queue. Implemented a creative feature that leverages the OpenAI API to generate playlists based on user text descriptions, combining natural language processing with Spotify's service.
 
 ## Installation
 
