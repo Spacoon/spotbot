@@ -2,6 +2,8 @@ import json
 
 from openai import OpenAI
 import streamlit as st
+from rich.pretty import pprint
+
 # from rich.pretty import pprint
 
 from spotify_controller import SpotifyController
@@ -37,43 +39,33 @@ class Menu:
         self.function_map = {
             'play_track': {
                 'func': self.sp.play_track,
-                'message': lambda message: f'Playing {message}'
             },
             'pause_playback': {
                 'func': self.sp.pause_playback,
-                'message': lambda message: 'Stopped playback'
             },
             'resume_playback': {
                 'func': self.sp.resume_playback,
-                'message': lambda message: 'Resumed playback'
             },
             'add_to_queue': {
                 'func': self.sp.add_to_queue,
-                'message': lambda message: f'Added {message} to a queue'
             },
             'switch_to_next_track': {
                 'func': self.sp.switch_to_next_track,
-                'message': lambda message: f'Skipping {message}'
             },
             'switch_to_previous_track': {
                 'func': self.sp.switch_to_previous_track,
-                'message': lambda message: f'Switching to previous track...'
             },
             'get_user_current_playback': {
                 'func': self.sp.get_user_current_playback,
-                'message': lambda message: f'Currently playing: {message}'
             },
             'create_playlist_with_tracks': {
                 'func': self.sp.create_playlist_with_tracks,
-                'message': lambda message: f'Here\'s your playlist: {message}'
             },
             'get_user_top_tracks': {
                 'func': self.sp.get_user_top_tracks,
-                'message': lambda message: f'Here are your top tracks of all time:\n\n{message}'
             },
             'get_user_top_artists': {
                 'func': self.sp.get_user_top_artists,
-                'message': lambda message: f'Here are your top artists of all time:\n\n{message}'
             },
         }
 
@@ -229,7 +221,6 @@ class Menu:
 
 
         self.message = ''
-        self.func_map = {}
 
         self._draw_page()
 
@@ -260,11 +251,8 @@ class Menu:
         details = []
 
         for item in tool_call.items():
-            # pprint(item)
-
             arguments = json.loads(item[1]['args'])
             function = item[1]['name']
-
 
             for tool in self.tools:
                 if tool['function']['name'] == function:
@@ -273,19 +261,13 @@ class Menu:
             if arguments:
                 called_tools_arguments.append(str(arguments))
 
-
             func = self.function_map[function]['func']
-            message_func = self.function_map[function]['message']
 
             result = func(**arguments)
 
             if result:
                 details.append(str(result))
-            # msg = message_func(result)
 
-        # pprint(called_tools_descriptions)
-        # pprint(called_tools_arguments)
-        # pprint(details)
 
         stream = self._create_response_to_tool(called_tools_descriptions, called_tools_arguments, details)
 
@@ -336,46 +318,52 @@ class Menu:
             })
 
     def _stream_messages(self):
+        called_functions = {}
         current_key = -1
         for chunk in self.stream:
             # if it's a normal message, not a tool call
-            if chunk.choices[0].delta.content is not None:
-                self.message += chunk.choices[0].delta.content
-                yield chunk.choices[0].delta.content
+            chunk_delta = chunk.choices[0].delta
+            if chunk_delta.content is not None:
+                self.message += chunk_delta.content
+                yield chunk_delta.content
 
             # if it's a tool call(s)
-            if chunk.choices[0].delta.tool_calls is not None:
+            if chunk_delta.tool_calls is not None:
                 # if there are multiple tool calls, it will group them by their index (current_key)
-                if chunk.choices[0].delta.tool_calls[0].index != current_key:
-                    current_key = chunk.choices[0].delta.tool_calls[0].index
-                    self.func_map[current_key] = {
-                        "name": chunk.choices[0].delta.tool_calls[0].function.name,
+                if chunk_delta.tool_calls[0].index != current_key:
+                    current_key = chunk_delta.tool_calls[0].index
+                    called_functions[current_key] = {
+                        "name": chunk_delta.tool_calls[0].function.name,
                         "args": ""
                     }
-                self.func_map[current_key]["args"] += chunk.choices[0].delta.tool_calls[0].function.arguments
+                called_functions[current_key]["args"] += chunk_delta.tool_calls[0].function.arguments
 
 
         # if there are any tool calls, it will call the function(s) and return the response
-        if self.func_map:
-            # pprint(self.func_map)
+        if called_functions:
 
-            msg = self._handle_tool_call(self.func_map)
+            msg = self._handle_tool_call(called_functions)
             for chunk in msg:
                 self.message += chunk
                 yield chunk
 
 
     def _create_response_to_tool(self, called_tools_descriptions: list, called_tools_arguments: list, details: list):
-        prompt = (f'Function(s) called: {", ".join(called_tools_descriptions)}\n\n'
-                  f'Arguments passed: {", ".join(called_tools_arguments)}\n\n'
+        prompt = (f'Chat messages: {st.session_state.messages}\n\n'
+                  f'Function(s) called: {"\n\n ".join(called_tools_descriptions)}\n\n'
+                  f'Arguments passed: {"\n\n".join(called_tools_arguments)}\n\n'
                   f'Details: {", ".join(details)}')
+        pprint(prompt)
 
         messages = [
             {
                 "role": "system",
                 "content": "You are a chatbot that interacts with Spotify API. You are given a task to create a "
                            "response to a tool call. Based on description of the tool call and its arguments, "
-                           "you should create a unique response that will be returned to the user."
+                           "you should create a unique response that will be returned to the user. Remember that your "
+                           "primary goal is to answer user's prompt. All of the chat messages will be given after "
+                           "'Chat messages: ')."
+                           "'Details: ' contains return strings from called tool(s)"
             },
             {
                 "role": "user",

@@ -1,9 +1,13 @@
+import json
+from pprint import pprint
+from time import sleep
+
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 
 class SpotifyController:
-    def __init__(self, credentials, scopes: str):
+    def __init__(self, credentials: json, scopes: str):
         try:
             self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes,
                                                                 client_id=credentials['spotify']['client_id'],
@@ -56,8 +60,8 @@ class SpotifyController:
 
         return top_artists
 
-    def _search_track(self, query: str):
-        return self.sp.search(query, limit=1)['tracks']['items'][0]['uri']
+    def _search_track(self, query: str, limit=1):
+        return self.sp.search(query, limit=limit)
 
     def is_device_active(self):
         for device in self.sp.devices()['devices']:
@@ -65,57 +69,62 @@ class SpotifyController:
                 return True
         return False
 
-    def play_track(self, track_uri=None, track_name=None):
-        if track_uri:
-            self.sp.add_to_queue(track_uri)
-            self.sp.next_track()
-            # self.sp.start_playback(uris=[track_uri])
+    def play_track(self, track_name=None):
         if track_name:
-            track = self._search_track(track_name)
-
-            # sp.start_playback plays the given track, but unfortunately erases a queue, so it's better to use
-            # add_to_queue and next_track
+            track = self._search_track(track_name)['tracks']['items'][0]['uri']
 
             self.sp.add_to_queue(track)
             self.sp.next_track()
 
             # self.sp.start_playback(uris=[track])
+            # sp.start_playback plays the given track, but unfortunately erases a queue, so it's better to use
+            # add_to_queue and next_track
         else:
             return None
-        return Response(track_name)
+        return track_name
 
     def pause_playback(self):
         if self.sp.current_playback()['is_playing']:
             self.sp.pause_playback()
-            return Response('Stopped playback')
+            return 'Stopped playback'
         else:
-            return Response('Playback is already paused')
+            return 'Playback is already paused'
 
     def resume_playback(self):
         if not self.sp.current_playback()['is_playing']:
             self.sp.start_playback()
-            return Response('Resumed playback')
+            return 'Resumed playback'
         else:
-            return Response('Playback is already playing')
+            return 'Playback is already playing'
 
     def add_to_queue(self, tracks):
+        searched_track_names = ''
         for track in tracks:
-            searched_track = self._search_track(track)
+            searched_track = self._search_track(track)['tracks']['items'][0]
+            # pprint(searched_track)
             if searched_track is not None:
-                self.sp.add_to_queue(searched_track)
+                # pprint(searched_track)
+                self.sp.add_to_queue(searched_track['uri'])
+                searched_track_names += f'{searched_track['name']} by {searched_track["artists"][0]["name"]}, '
+                # pprint(searched_track_names)
             else:
                 print(f'could not play {searched_track}')
 
-        return Response(", ".join(tracks))
+        return ", ".join(searched_track_names)
 
     def switch_to_next_track(self):
         self.sp.next_track()
+        sleep(0.1)
+        playback = self._get_current_playback()["item"]
 
-        return Response(self._get_current_playback()["item"]["name"])
+        return f'{playback["name"]} by {playback["artists"][0]["name"]}'
 
     def switch_to_previous_track(self):
         self.sp.previous_track()
-        return Response('Switching to previous track...')
+        sleep(0.1)
+        playback = self._get_current_playback()["item"]
+
+        return f'{playback["name"]} by {playback["artists"][0]["name"]}'
 
     def get_user_current_playback(self):
         current_playback = self._get_current_playback()
@@ -123,9 +132,9 @@ class SpotifyController:
         if current_playback is not None:
             track_name = current_playback["item"]["name"]
             artist_name = current_playback["item"]["artists"][0]["name"]
-            return Response(track_name + f' by {artist_name}')
+            return f'{track_name} + by {artist_name}'
         else:
-            return Response('No track is currently playing')
+            return 'No track is currently playing'
 
     def create_playlist_with_tracks(self, name: str, tracks: list):
         playlist = self._create_playlist(name)
@@ -133,7 +142,7 @@ class SpotifyController:
 
         self.sp.playlist_add_items(playlist['id'], track_ids)
 
-        return Response(playlist['external_urls']['spotify'])
+        return playlist['external_urls']['spotify']
 
     def get_user_top_tracks(self, tracks=50):
         top_tracks = self._fetch_top_tracks(tracks)
@@ -143,29 +152,10 @@ class SpotifyController:
         for i in range(len(top_tracks_names)):
             top_tracks_names[i] += f' by {top_tracks_artists[i]}'
 
-        return Response(listed_tracks=top_tracks_names)
+        return ", ".join(top_tracks_names)
 
     def get_user_top_artists(self, tracks=50):
         top_artists = self._fetch_top_artists(tracks)
         top_artists_names = [artist['name'] for artist in top_artists]
 
-        return Response(listed_tracks=top_artists_names)
-
-
-class Response:
-    message_details: str
-    listed_tracks: str
-
-    def __init__(self, details='', listed_tracks=None):
-        self.message_details = details
-
-        if listed_tracks:
-            self.listed_tracks = "\n\n".join(listed_tracks)
-
-    def __str__(self):
-        if self.message_details:
-            return self.message_details
-        elif self.listed_tracks:
-            return self.listed_tracks
-        else:
-            return ''
+        return ", ".join(top_artists_names)
