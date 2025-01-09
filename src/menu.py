@@ -2,8 +2,6 @@ import json
 
 from openai import OpenAI
 import streamlit as st
-from rich.pretty import pprint
-
 # from rich.pretty import pprint
 
 from spotify_controller import SpotifyController
@@ -39,33 +37,43 @@ class Menu:
         self.function_map = {
             'play_track': {
                 'func': self.sp.play_track,
+                'message': lambda message: f'Playing {message}'
             },
             'pause_playback': {
                 'func': self.sp.pause_playback,
+                'message': lambda message: 'Stopped playback'
             },
             'resume_playback': {
                 'func': self.sp.resume_playback,
+                'message': lambda message: 'Resumed playback'
             },
             'add_to_queue': {
                 'func': self.sp.add_to_queue,
+                'message': lambda message: f'Added {message} to a queue'
             },
             'switch_to_next_track': {
                 'func': self.sp.switch_to_next_track,
+                'message': lambda message: f'Skipping {message}'
             },
             'switch_to_previous_track': {
                 'func': self.sp.switch_to_previous_track,
+                'message': lambda message: f'Switching to previous track...'
             },
             'get_user_current_playback': {
                 'func': self.sp.get_user_current_playback,
+                'message': lambda message: f'Currently playing: {message}'
             },
             'create_playlist_with_tracks': {
                 'func': self.sp.create_playlist_with_tracks,
+                'message': lambda message: f'Here\'s your playlist: {message}'
             },
             'get_user_top_tracks': {
                 'func': self.sp.get_user_top_tracks,
+                'message': lambda message: f'Here are your top tracks of all time:\n\n{message}'
             },
             'get_user_top_artists': {
                 'func': self.sp.get_user_top_artists,
+                'message': lambda message: f'Here are your top artists of all time:\n\n{message}'
             },
         }
 
@@ -75,13 +83,14 @@ class Menu:
                 "function": {
                     "name": "play_track",
                     "description": "Play a song. Call this whenever you are asked to play something, "
-                                   "for example when user says 'play a song'",
+                                   "for example when user says 'play a Xtal by Aphex Twin', you should call this "
+                                   "function with parameter 'Xtal Aphex Twin'.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "track_name": {
                                 "type": "string",
-                                "description": "Title of a track to play"
+                                "description": "Title name and artist name of a track to play"
                             },
                         },
                         "required": ["track_name"],
@@ -103,7 +112,8 @@ class Menu:
                     "name": "resume_playback",
                     "description": "Resume playback of a track. Call this whenever you are asked to resume or "
                                    "start playing something (but if user asks you to play a certain song, "
-                                   "you should not call this function), for example when user says 'play'",
+                                   "you should not call this function), for example when user says 'play' without "
+                                   "track's title",
                 }
             },
             {
@@ -137,7 +147,8 @@ class Menu:
                                 "items": {
                                     "type": "string"
                                 },
-                                "description": "Titles of tracks, each and every one put in a list"
+                                "description": "Titles of tracks alongside with it's authors, each and every one put "
+                                               "in a list"
                             },
                         },
                         "required": ["tracks"],
@@ -149,7 +160,7 @@ class Menu:
                 "type": "function",
                 "function": {
                     "name": "get_user_current_playback",
-                    "description": "Get the current playback. For example, when users says 'what is playing', "
+                    "description": "Get current playback. For example, when users says 'what is playing', "
                                    "you should call this function",
                 }
             },
@@ -158,7 +169,7 @@ class Menu:
                 "function": {
                     "name": "create_playlist_with_tracks",
                     "description": "Create a playlist with tracks. Call this function when you want to create a "
-                                   "playlist that contains the tracks based on user\'s description.",
+                                   "playlist that contains the tracks and it's authors based on description.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -167,11 +178,12 @@ class Menu:
                                 "items": {
                                     "type": "string"
                                 },
-                                "description": "Titles of tracks based on user\'s response."
+                                "description": "Titles of tracks with authors names based on response."
                             },
                             "name": {
                                 "type": "string",
-                                "description": "Name of the playlist. If not provided, come up with a name yourself"
+                                "description": "Name of the playlist. If not provided, come up with a creative name "
+                                               "yourself"
                             }
                         },
                         "required": ["tracks", "name"],
@@ -183,8 +195,9 @@ class Menu:
                 "type": "function",
                 "function": {
                     "name": "get_user_top_tracks",
-                    "description": "Get user\'s favorite tracks. Call this function when you want to get user\'s top "
-                                   "tracks",
+                    "description": f"Get {self.username[0]}'s favorite tracks. Call this function when you want to get "
+                                   "top tracks, e.g. user's favorite songs. Try to get the number of tracks and pass "
+                                   "it in a parameter",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -202,8 +215,8 @@ class Menu:
                 "type": "function",
                 "function": {
                     "name": "get_user_top_artists",
-                    "description": "Get user\'s favorite artists. Call this function when you want to get user\'s top "
-                                   "artists, performers, or bands",
+                    "description": f"Get {self.username[0]}'s favorite artists, performers or authors. Try to get the "
+                                   'number of them and pass it in a parameter',
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -219,8 +232,8 @@ class Menu:
             },
         ]
 
-
         self.message = ''
+        self.func_map = {}
 
         self._draw_page()
 
@@ -251,6 +264,8 @@ class Menu:
         details = []
 
         for item in tool_call.items():
+            # pprint(item)
+
             arguments = json.loads(item[1]['args'])
             function = item[1]['name']
 
@@ -262,29 +277,44 @@ class Menu:
                 called_tools_arguments.append(str(arguments))
 
             func = self.function_map[function]['func']
+            message_func = self.function_map[function]['message']
 
             result = func(**arguments)
 
             if result:
                 details.append(str(result))
+            # msg = message_func(result)
 
+        # pprint(called_tools_descriptions)
+        # pprint(called_tools_arguments)
+        # pprint(details)
 
         stream = self._create_response_to_tool(called_tools_descriptions, called_tools_arguments, details)
 
         for chunk in stream:
             yield chunk
 
-
     def _handle_chat(self, openai_key):
         if "messages" not in st.session_state:
             st.session_state["messages"] = [
                 {
+                    "role": "system",
+                    "content": f'You are a chatbot that will respond to user named {self.username[0]} with the ability '
+                               "to interact with some functionality of Spotify API. You can handle various"
+                               "commands such as playing a song, pausing or resuming playback, adding a song to a "
+                               "queue, switching to the next or previous track, getting the current playback, "
+                               "creating a playlist with tracks, and retrieving the user's top tracks or artists. "
+                               "Ensure to handle all tool calls accurately and provide clear, concise responses to "
+                               "the user. If you're not sure which tool or with what arguments to call a function, "
+                               "ask the user for more details."
+                },
+                {
                     "role": "assistant",
-                    "content": "How can I help you?"
+                    "content": f"Hi {self.username[0]}! What you're listening to today?"
                 }
             ]
 
-        for msg in st.session_state.messages:
+        for msg in st.session_state.messages[1:]:
             st.chat_message(
                 msg["role"]).write(
                 msg["content"]
@@ -294,7 +324,6 @@ class Menu:
             if not openai_key:
                 st.info("Please add your OpenAI API key to continue.")
                 st.stop()
-
 
             st.session_state.messages.append({
                 "role": "user",
@@ -311,59 +340,54 @@ class Menu:
 
             st.chat_message("assistant").write_stream(self._stream_messages)
 
-
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": self.message
             })
 
     def _stream_messages(self):
-        called_functions = {}
         current_key = -1
         for chunk in self.stream:
             # if it's a normal message, not a tool call
-            chunk_delta = chunk.choices[0].delta
-            if chunk_delta.content is not None:
-                self.message += chunk_delta.content
-                yield chunk_delta.content
+            if chunk.choices[0].delta.content is not None:
+                self.message += chunk.choices[0].delta.content
+                yield chunk.choices[0].delta.content
 
             # if it's a tool call(s)
-            if chunk_delta.tool_calls is not None:
+            if chunk.choices[0].delta.tool_calls is not None:
                 # if there are multiple tool calls, it will group them by their index (current_key)
-                if chunk_delta.tool_calls[0].index != current_key:
-                    current_key = chunk_delta.tool_calls[0].index
-                    called_functions[current_key] = {
-                        "name": chunk_delta.tool_calls[0].function.name,
+                if chunk.choices[0].delta.tool_calls[0].index != current_key:
+                    current_key = chunk.choices[0].delta.tool_calls[0].index
+                    self.func_map[current_key] = {
+                        "name": chunk.choices[0].delta.tool_calls[0].function.name,
                         "args": ""
                     }
-                called_functions[current_key]["args"] += chunk_delta.tool_calls[0].function.arguments
-
+                self.func_map[current_key]["args"] += chunk.choices[0].delta.tool_calls[0].function.arguments
 
         # if there are any tool calls, it will call the function(s) and return the response
-        if called_functions:
+        if self.func_map:
+            # pprint(self.func_map)
 
-            msg = self._handle_tool_call(called_functions)
+            msg = self._handle_tool_call(self.func_map)
             for chunk in msg:
                 self.message += chunk
                 yield chunk
 
-
-    def _create_response_to_tool(self, called_tools_descriptions: list, called_tools_arguments: list, details: list):
-        prompt = (f'Chat messages: {st.session_state.messages}\n\n'
-                  f'Function(s) called: {"\n\n ".join(called_tools_descriptions)}\n\n'
-                  f'Arguments passed: {"\n\n".join(called_tools_arguments)}\n\n'
+    def _create_response_to_tool(self,
+                                 called_tools_descriptions: list,
+                                 called_tools_arguments: list,
+                                 details: list):
+        prompt = (f'Function(s) called: {", ".join(called_tools_descriptions)}\n\n'
+                  f'Arguments passed: {", ".join(called_tools_arguments)}\n\n'
                   f'Details: {", ".join(details)}')
-        pprint(prompt)
 
         messages = [
             {
                 "role": "system",
-                "content": "You are a chatbot that interacts with Spotify API. You are given a task to create a "
-                           "response to a tool call. Based on description of the tool call and its arguments, "
-                           "you should create a unique response that will be returned to the user. Remember that your "
-                           "primary goal is to answer user's prompt. All of the chat messages will be given after "
-                           "'Chat messages: ')."
-                           "'Details: ' contains return strings from called tool(s)"
+                "content": f'You are a chatbot that interacts with Spotify API. Based on description of the tool '
+                           f'call, its arguments and details listed in form:'
+                           '"Function(s) called: ...\n, Arguments passed: ...\n, Details: ...\n", '
+                           f'you should create a unique response that will be returned to user named {self.username[0]}.'
             },
             {
                 "role": "user",
